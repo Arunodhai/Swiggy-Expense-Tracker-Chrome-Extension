@@ -2,6 +2,14 @@
 
 A Manifest V3 Chrome extension that captures your Swiggy order history from the current page and renders a single-page analytics dashboard.
 
+## Screenshot
+
+<img width="317" height="418" alt="Screenshot 2026-02-27 at 12 48 15 AM" src="https://github.com/user-attachments/assets/884ee10c-a011-42fa-9f1b-503d0a19f5d2" />
+
+<img width="1440" height="812" alt="Screenshot 2026-02-27 at 12 16 09 AM" src="https://github.com/user-attachments/assets/52ac4e8f-7661-4a62-b62e-7ebc6afea3c6" />
+
+
+
 ## Current Features
 
 - One-click sync from popup: **Sync current Swiggy page**
@@ -42,8 +50,7 @@ A Manifest V3 Chrome extension that captures your Swiggy order history from the 
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
 3. Click **Load unpacked**
-4. Select this folder:
-   - `/Users/arunodhaiv/Desktop/Swiggy Expense Tracker`
+4. Select the Swiggy Expense Tracker folder.
 
 ## Usage
 
@@ -68,16 +75,6 @@ A Manifest V3 Chrome extension that captures your Swiggy order history from the 
 - `scripting`: inject content script fallback on demand
 - Host permission: `https://www.swiggy.com/*`
 
-## Troubleshooting
-
-- **“Could not establish connection. Receiving end does not exist.”**
-  - The extension now attempts script injection fallback automatically.
-  - If it still appears: refresh Swiggy tab, then retry sync.
-- **0 spend / missing totals**
-  - Ensure the visible cards include `Total Paid`.
-  - Scroll to load more orders and sync again.
-- **Unexpected restaurant/name parsing**
-  - Swiggy DOM is dynamic; parser uses heuristics and may need adjustment if page structure changes.
 
 ## Limitations
 
