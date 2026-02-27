@@ -41,6 +41,96 @@ let latestOrders = [];
 let selectedYear = "all";
 let chartAnimationFrame = 0;
 const THEME_STORAGE_KEY = "swiggy_dashboard_theme_v1";
+const USE_MOCK_DEMO_DATA = true;
+const DEMO_PHONE = "9567641577";
+let mockOrdersCache = null;
+
+function buildMockOrders() {
+  if (mockOrdersCache) return mockOrdersCache;
+
+  const reference = new Date("2026-02-27T20:30:00");
+  const restaurants = [
+    "Stories De Cafe",
+    "Nalla Bhoomi Restaurant",
+    "Arabian Grill Hub",
+    "Wok Dynasty",
+    "Pizza Yard"
+  ];
+  const itemPool = [
+    "Porotta x 2, Paneer Chilly x 1",
+    "Nool Porotta x 2, Kuboos x 1",
+    "Chicken Shawarma x 2, Kuboos x 2",
+    "Fried Rice x 1, Chilli Chicken x 1",
+    "Margherita Pizza x 1, Garlic Bread x 1",
+    "Beef Fry x 1, Porotta x 2",
+    "Kunafa x 1, Falafel Wrap x 1"
+  ];
+  const monthPlan = [
+    { offset: 11, count: 6, base: 390 },
+    { offset: 10, count: 5, base: 340 },
+    { offset: 9, count: 8, base: 430 },
+    { offset: 8, count: 7, base: 380 },
+    { offset: 7, count: 6, base: 410 },
+    { offset: 6, count: 9, base: 520 },
+    { offset: 5, count: 7, base: 460 },
+    { offset: 4, count: 6, base: 400 },
+    { offset: 3, count: 8, base: 490 },
+    { offset: 2, count: 7, base: 445 },
+    { offset: 1, count: 6, base: 420 },
+    { offset: 0, count: 9, base: 510 }
+  ];
+  const hours = [20, 19, 21, 13, 18, 22, 15, 12, 20];
+
+  const orders = [];
+  let id = 1;
+  monthPlan.forEach((plan, mIdx) => {
+    for (let i = 0; i < plan.count; i += 1) {
+      const dt = new Date(reference);
+      dt.setMonth(dt.getMonth() - plan.offset);
+      dt.setDate(((i * 3 + mIdx * 2) % 26) + 1);
+      dt.setHours(hours[(i + mIdx) % hours.length], (i * 11) % 60, 0, 0);
+
+      const restIdx = (i + mIdx * 2 + (i % 3 === 0 ? 0 : 1)) % restaurants.length;
+      const restaurant = restaurants[restIdx];
+      const items = [itemPool[(i + mIdx + (restIdx % 2)) % itemPool.length]];
+      const amount = plan.base + ((i * 57 + mIdx * 41) % 290);
+
+      orders.push({
+        source: "swiggy",
+        orderId: `DEMO-${String(id).padStart(4, "0")}`,
+        restaurant,
+        amount,
+        dateISO: dt.toISOString(),
+        status: "delivered",
+        items,
+        syncedAt: new Date("2026-02-27T21:00:00").toISOString()
+      });
+      id += 1;
+
+      // Add occasional same-day extra orders so calendar intensity reaches darker levels.
+      const burst = ((i + mIdx) % 5 === 0 ? 1 : 0) + ((i + mIdx) % 11 === 0 ? 1 : 0);
+      for (let b = 0; b < burst; b += 1) {
+        const extraDt = new Date(dt);
+        extraDt.setMinutes(extraDt.getMinutes() + 20 + b * 17);
+        const extraAmount = amount + 90 + b * 35;
+        orders.push({
+          source: "swiggy",
+          orderId: `DEMO-${String(id).padStart(4, "0")}`,
+          restaurant: restaurants[(restIdx + b + 1) % restaurants.length],
+          amount: extraAmount,
+          dateISO: extraDt.toISOString(),
+          status: "delivered",
+          items: [itemPool[(i + mIdx + b + 1) % itemPool.length]],
+          syncedAt: new Date("2026-02-27T21:00:00").toISOString()
+        });
+        id += 1;
+      }
+    }
+  });
+
+  mockOrdersCache = orders.sort((a, b) => new Date(b.dateISO) - new Date(a.dateISO));
+  return mockOrdersCache;
+}
 
 function isDarkTheme() {
   return document.body.dataset.theme === "dark";
@@ -442,6 +532,26 @@ function drawBarChart(canvas, labels, values, color, progress = 1) {
   const chartTop = (h - chartHeight) / 2;
   const chartBottom = chartTop + chartHeight;
   const band = (w - left - right) / Math.max(labels.length, 1);
+  const labelStep = Math.max(1, Math.ceil(labels.length / 7));
+  const minLabelGap = 52;
+  const labelIndexes = [];
+
+  for (let i = 0; i < labels.length; i += 1) {
+    if (i % labelStep === 0) labelIndexes.push(i);
+  }
+  if (!labelIndexes.includes(labels.length - 1)) {
+    labelIndexes.push(labels.length - 1);
+  }
+  if (labelIndexes.length >= 2) {
+    const lastIdx = labelIndexes[labelIndexes.length - 1];
+    const prevIdx = labelIndexes[labelIndexes.length - 2];
+    const lastX = left + lastIdx * band + band * 0.5;
+    const prevX = left + prevIdx * band + band * 0.5;
+    if (lastX - prevX < minLabelGap) {
+      labelIndexes.splice(labelIndexes.length - 2, 1);
+    }
+  }
+  const labelIndexSet = new Set(labelIndexes);
 
   ctx.strokeStyle = theme.axis;
   ctx.beginPath();
@@ -455,13 +565,27 @@ function drawBarChart(canvas, labels, values, color, progress = 1) {
     const vh = ((chartHeight * values[i]) / max) * progress;
     const y = chartBottom - vh;
 
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, bw, vh);
+    const barColor = Array.isArray(color) ? color[i % color.length] : color;
+    if (barColor && typeof barColor === "object" && barColor.type === "outline") {
+      ctx.strokeStyle = barColor.stroke || "#ff6a2b";
+      ctx.lineWidth = Math.max(1.5, bw * 0.06);
+      ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, bw - 1), Math.max(0, vh - 1));
+    } else {
+      ctx.fillStyle = barColor;
+      ctx.fillRect(x, y, bw, vh);
+    }
 
-    ctx.fillStyle = theme.label;
-    ctx.font = "11px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(label, x + bw / 2, chartBottom + 14);
+    if (labelIndexSet.has(i)) {
+      ctx.fillStyle = theme.label;
+      ctx.font = "11px sans-serif";
+      if (i === labels.length - 1) {
+        ctx.textAlign = "right";
+        ctx.fillText(label, w - right, chartBottom + 14);
+      } else {
+        ctx.textAlign = "center";
+        ctx.fillText(label, x + bw / 2, chartBottom + 14);
+      }
+    }
 
     if (canvas === monthlyCanvas) {
       monthlyBarRegions.push({
@@ -487,6 +611,8 @@ function drawLineChart(canvas, labels, values, color, progress = 1) {
   const chartTop = (h - chartHeight) / 2;
   const chartBottom = chartTop + chartHeight;
   const max = Math.max(...values, 1);
+  const labelStep = Math.max(1, Math.ceil(labels.length / 6));
+  const minLabelGap = 52;
 
   ctx.strokeStyle = theme.axis;
   ctx.beginPath();
@@ -494,23 +620,59 @@ function drawLineChart(canvas, labels, values, color, progress = 1) {
   ctx.lineTo(w - right, chartBottom);
   ctx.stroke();
 
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  labels.forEach((label, i) => {
+  const points = labels.map((label, i) => {
     const x = left + (i * (w - left - right)) / Math.max(labels.length - 1, 1);
     const y = chartBottom - ((chartHeight * values[i]) / max) * progress;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-
-    if (canvas === trendCanvas) {
-      trendPointRegions.push({ x, y, label, value: values[i] });
-    }
+    return { x, y, label, value: values[i] };
   });
-  ctx.stroke();
+
+  if (canvas === trendCanvas) {
+    trendPointRegions = points.map((pt) => ({ x: pt.x, y: pt.y, label: pt.label, value: pt.value }));
+  }
+
+  if (points.length) {
+    const grad = ctx.createLinearGradient(0, chartTop, 0, chartBottom);
+    grad.addColorStop(0, "rgba(255,106,43,0.34)");
+    grad.addColorStop(1, "rgba(255,106,43,0)");
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, chartBottom);
+    points.forEach((pt) => ctx.lineTo(pt.x, pt.y));
+    ctx.lineTo(points[points.length - 1].x, chartBottom);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.strokeStyle = "#ff6a2b";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.stroke();
+  }
+
+  const labelIndexes = [];
+  for (let i = 0; i < labels.length; i += 1) {
+    if (i % labelStep === 0) labelIndexes.push(i);
+  }
+  if (!labelIndexes.includes(labels.length - 1)) {
+    labelIndexes.push(labels.length - 1);
+  }
+  if (labelIndexes.length >= 2) {
+    const lastIdx = labelIndexes[labelIndexes.length - 1];
+    const prevIdx = labelIndexes[labelIndexes.length - 2];
+    const lastX = left + (lastIdx * (w - left - right)) / Math.max(labels.length - 1, 1);
+    const prevX = left + (prevIdx * (w - left - right)) / Math.max(labels.length - 1, 1);
+    if (lastX - prevX < minLabelGap) {
+      labelIndexes.splice(labelIndexes.length - 2, 1);
+    }
+  }
+  const labelIndexSet = new Set(labelIndexes);
 
   labels.forEach((label, i) => {
-    if (i % Math.ceil(labels.length / 6) !== 0 && i !== labels.length - 1) return;
+    if (!labelIndexSet.has(i)) return;
     const x = left + (i * (w - left - right)) / Math.max(labels.length - 1, 1);
     ctx.fillStyle = theme.label;
     ctx.font = "11px sans-serif";
@@ -594,8 +756,7 @@ function drawDonutChart(canvas, values, colors, labels, progress = 1) {
     ctx.fillRect(w * 0.58, 20 + i * 18, 8, 8);
     ctx.fillStyle = theme.donutLabel;
     ctx.font = "11px sans-serif";
-    const short = label.length > 16 ? `${label.slice(0, 16)}...` : label;
-    ctx.fillText(short, w * 0.58 + 13, 27 + i * 18);
+    ctx.fillText(label, w * 0.58 + 13, 27 + i * 18);
   });
 }
 
@@ -623,8 +784,15 @@ function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [],
     ctx.fillStyle = theme.chartBarBg;
     ctx.fillRect(left, y, barArea, bh);
 
-    ctx.fillStyle = color;
-    ctx.fillRect(left, y, bw, bh);
+    const barColor = Array.isArray(color) ? color[i % color.length] : color;
+    if (barColor && typeof barColor === "object" && barColor.type === "outline") {
+      ctx.strokeStyle = barColor.stroke || "#ff6a2b";
+      ctx.lineWidth = Math.max(1.5, bh * 0.35);
+      ctx.strokeRect(left + 0.5, y + 0.5, Math.max(0, bw - 1), Math.max(0, bh - 1));
+    } else {
+      ctx.fillStyle = barColor;
+      ctx.fillRect(left, y, bw, bh);
+    }
 
     ctx.fillStyle = theme.itemLabel;
     ctx.font = "12px sans-serif";
@@ -805,8 +973,10 @@ function render(orders) {
     .filter(([k]) => k !== "Unknown")
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-12);
-  const monthLabels = monthEntries.map(([k]) => monthLabel(k));
-  const monthValues = monthEntries.map(([, v]) => v);
+  const monthEntriesForChart = monthEntries.filter(([k]) => k !== currentMonthKey());
+  const monthlySeries = monthEntriesForChart.length ? monthEntriesForChart : monthEntries;
+  const monthLabels = monthlySeries.map(([k]) => monthLabel(k));
+  const monthValues = monthlySeries.map(([, v]) => v);
 
   const activeMonths = new Set(filteredOrders.map((o) => monthKey(o.dateISO)).filter((k) => k !== "Unknown")).size;
   const topSpendMonth = topEntry(new Map(monthEntries));
@@ -863,9 +1033,29 @@ function render(orders) {
   subtitleEl.textContent = "";
 
   const spendTop6 = restSpendEntries.slice(0, 6);
-  const donutColors = isDarkTheme()
-    ? ["#f8fafc", "#ff6a2b", "#60a5fa", "#34d399", "#fbbf24", "#f87171"]
-    : ["#111111", "#ff6a2b", "#1d6eff", "#10b981", "#f59e0b", "#ef4444"];
+  const spendLabels = spendTop6.map((e) => cleanRestaurantLabel(e[0]));
+  const fallbackPalette = isDarkTheme()
+    ? ["#f8fafc", "#ff8a00", "#ffe100", "#f7f700", "#ff5400"]
+    : ["#000000", "#ff8a00", "#ffe100", "#f7f700", "#ff5400"];
+  const pinnedColors = {
+    "Arabian Grill Hub": "#ff5400",
+    "Pizza Yard": "#ff8a00"
+  };
+  const usedColors = new Set(Object.values(pinnedColors));
+  let fallbackIndex = 0;
+  const donutColors = spendLabels.map((label) => {
+    if (pinnedColors[label]) return pinnedColors[label];
+    let color = fallbackPalette[fallbackIndex % fallbackPalette.length];
+    let guard = 0;
+    while (usedColors.has(color) && guard < fallbackPalette.length) {
+      fallbackIndex += 1;
+      color = fallbackPalette[fallbackIndex % fallbackPalette.length];
+      guard += 1;
+    }
+    usedColors.add(color);
+    fallbackIndex += 1;
+    return color;
+  });
 
   const heatmapDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const heatmapSlots = ["00-06", "06-12", "12-18", "18-24"];
@@ -893,18 +1083,23 @@ function render(orders) {
     .filter(([k]) => k !== "Unknown")
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-12);
-  const trendLabels = trendEntries.map(([k]) => monthLabel(k));
-  const trendValues = trendEntries.map(([, v]) => v);
+  const trendEntriesForChart = trendEntries.filter(([k]) => k !== currentMonthKey());
+  const trendSeries = trendEntriesForChart.length ? trendEntriesForChart : trendEntries;
+  const trendLabels = trendSeries.map(([k]) => monthLabel(k));
+  const trendValues = trendSeries.map(([, v]) => v);
 
   renderActivityCalendar(filteredOrders, true);
 
   animateCharts((progress) => {
-    drawBarChart(monthlyCanvas, monthLabels, monthValues, theme.monthlyBar, progress);
+    const monthlyAltColors = isDarkTheme()
+      ? ["#f8fafc", { type: "outline", stroke: "#ff6a2b" }]
+      : ["#111111", { type: "outline", stroke: "#ff6a2b" }];
+    drawBarChart(monthlyCanvas, monthLabels, monthValues, monthlyAltColors, progress);
     drawDonutChart(
       restaurantCanvas,
       spendTop6.map((e) => e[1]),
       donutColors,
-      spendTop6.map((e) => cleanRestaurantLabel(e[0])),
+      spendLabels,
       progress
     );
     drawHeatmap(heatmapCanvas, heatMatrix, heatmapDays, heatmapSlots, progress);
@@ -912,7 +1107,7 @@ function render(orders) {
       itemCountCanvas,
       itemsTop7.map((e) => e[0]),
       itemsTop7.map((e) => e[1]),
-      theme.itemBar,
+      isDarkTheme() ? ["#f8fafc", "#ff6a2b"] : ["#111111", "#ff6a2b"],
       [],
       progress
     );
@@ -943,10 +1138,12 @@ async function refreshFromStorage() {
     chrome.runtime.sendMessage({ type: "GET_ORDERS" }),
     chrome.runtime.sendMessage({ type: "GET_PROFILE" })
   ]);
-  const orders = ordersRes?.orders || [];
+  const storedOrders = ordersRes?.orders || [];
+  const orders = USE_MOCK_DEMO_DATA ? buildMockOrders() : storedOrders;
   const profile = profileRes?.profile || {};
   const phone = (profile.phone || "").replace(/\s+/g, "");
-  profilePhoneTextEl.textContent = phone || "—";
+  profilePhoneTextEl.textContent = phone || (USE_MOCK_DEMO_DATA ? DEMO_PHONE : "—");
+  subtitleEl.textContent = USE_MOCK_DEMO_DATA ? "Demo data mode" : "";
   updateYearOptions(orders);
   render(orders);
 }
