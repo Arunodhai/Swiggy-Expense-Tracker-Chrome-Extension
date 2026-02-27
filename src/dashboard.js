@@ -21,6 +21,8 @@ const currentStreakEl = document.getElementById("currentStreak");
 const refreshBtn = document.getElementById("refreshBtn");
 const yearSelectEl = document.getElementById("globalYearSelect");
 const themeToggleBtn = document.getElementById("themeToggleBtn");
+const dashboardGridEl = document.getElementById("dashboardGrid");
+const radialDaySelectEl = document.getElementById("radialDaySelect");
 
 const monthlyCanvas = document.getElementById("monthlyChart");
 const restaurantCanvas = document.getElementById("restaurantChart");
@@ -39,8 +41,12 @@ let itemBarRegions = [];
 let trendPointRegions = [];
 let latestOrders = [];
 let selectedYear = "all";
+let selectedRadialDay = "All";
+let radialHoverHour = null;
+let radialHourlyByDay = null;
 let chartAnimationFrame = 0;
 const THEME_STORAGE_KEY = "swiggy_dashboard_theme_v1";
+const CARD_ORDER_STORAGE_KEY = "swiggy_dashboard_card_order_v1";
 const USE_MOCK_DEMO_DATA = true;
 const DEMO_PHONE = "9567641577";
 let mockOrdersCache = null;
@@ -170,6 +176,36 @@ function getThemeColors() {
       };
 }
 
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const num = Number.parseInt(full, 16);
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255
+  };
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function heatGradientColor(t) {
+  const stops = ["#070a1a", "#251443", "#4d1c66", "#8b1f77", "#c2185b", "#ef4444", "#f97316", "#f6d6b8"];
+  const clamped = Math.max(0, Math.min(1, t));
+  const scaled = clamped * (stops.length - 1);
+  const idx = Math.floor(scaled);
+  const next = Math.min(stops.length - 1, idx + 1);
+  const localT = scaled - idx;
+  const c1 = hexToRgb(stops[idx]);
+  const c2 = hexToRgb(stops[next]);
+  const r = Math.round(lerp(c1.r, c2.r, localT));
+  const g = Math.round(lerp(c1.g, c2.g, localT));
+  const b = Math.round(lerp(c1.b, c2.b, localT));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function applyTheme(theme) {
   const next = theme === "dark" ? "dark" : "light";
   document.body.dataset.theme = next;
@@ -182,6 +218,123 @@ function applyTheme(theme) {
 function initTheme() {
   const saved = localStorage.getItem(THEME_STORAGE_KEY);
   applyTheme(saved || "light");
+}
+
+function initRadialDayOptions() {
+  if (!radialDaySelectEl) return;
+  const days = ["All", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  radialDaySelectEl.innerHTML = "";
+  days.forEach((day) => {
+    const opt = document.createElement("option");
+    opt.value = day;
+    opt.textContent = day;
+    radialDaySelectEl.appendChild(opt);
+  });
+  radialDaySelectEl.value = selectedRadialDay;
+}
+
+function saveCardOrder() {
+  if (!dashboardGridEl) return;
+  const order = Array.from(dashboardGridEl.querySelectorAll(".panel"))
+    .map((el) => el.dataset.cardKey)
+    .filter(Boolean);
+  localStorage.setItem(CARD_ORDER_STORAGE_KEY, JSON.stringify(order));
+}
+
+function applySavedCardOrder() {
+  if (!dashboardGridEl) return;
+  const raw = localStorage.getItem(CARD_ORDER_STORAGE_KEY);
+  if (!raw) return;
+  let order = [];
+  try {
+    order = JSON.parse(raw);
+  } catch (_err) {
+    return;
+  }
+  if (!Array.isArray(order) || !order.length) return;
+
+  const panelMap = new Map(
+    Array.from(dashboardGridEl.querySelectorAll(".panel"))
+      .map((el) => [el.dataset.cardKey, el])
+      .filter(([key]) => Boolean(key))
+  );
+
+  order.forEach((key) => {
+    const panel = panelMap.get(key);
+    if (panel) dashboardGridEl.appendChild(panel);
+  });
+}
+
+function clearDragIndicators() {
+  if (!dashboardGridEl) return;
+  dashboardGridEl.querySelectorAll(".panel.drag-over").forEach((el) => el.classList.remove("drag-over"));
+}
+
+function getClosestDropTarget(clientX, clientY, draggingEl) {
+  const panels = Array.from(dashboardGridEl.querySelectorAll(".panel")).filter((el) => el !== draggingEl);
+  let best = null;
+  let bestDist = Infinity;
+  panels.forEach((panel) => {
+    const rect = panel.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = panel;
+    }
+  });
+  return best;
+}
+
+function initCardReorder() {
+  if (!dashboardGridEl) return;
+  applySavedCardOrder();
+
+  dashboardGridEl.querySelectorAll(".panel").forEach((panel) => {
+    panel.setAttribute("draggable", "true");
+
+    panel.addEventListener("dragstart", () => {
+      panel.classList.add("dragging");
+      clearDragIndicators();
+    });
+
+    panel.addEventListener("dragend", () => {
+      panel.classList.remove("dragging");
+      clearDragIndicators();
+      saveCardOrder();
+      refreshFromStorage().catch(() => {});
+    });
+  });
+
+  dashboardGridEl.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    const draggingEl = dashboardGridEl.querySelector(".panel.dragging");
+    if (!draggingEl) return;
+    const target = getClosestDropTarget(event.clientX, event.clientY, draggingEl);
+    clearDragIndicators();
+    if (!target || target === draggingEl) return;
+    target.classList.add("drag-over");
+  });
+
+  dashboardGridEl.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const draggingEl = dashboardGridEl.querySelector(".panel.dragging");
+    if (!draggingEl) return;
+    const target = getClosestDropTarget(event.clientX, event.clientY, draggingEl);
+    if (!target || target === draggingEl) return;
+
+    const rect = target.getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    if (before) {
+      dashboardGridEl.insertBefore(draggingEl, target);
+    } else {
+      dashboardGridEl.insertBefore(draggingEl, target.nextSibling);
+    }
+    clearDragIndicators();
+  });
 }
 
 function easeOutCubic(t) {
@@ -239,6 +392,30 @@ function orderYear(dateISO) {
 function currentMonthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function previousMonthKey(monthKeyValue) {
+  const [y, m] = String(monthKeyValue).split("-").map(Number);
+  if (!y || !m) return null;
+  const dt = new Date(y, m - 2, 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getDeltaMeta(current, previous) {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) return { cls: "flat", text: "→ 0%" };
+  if (previous === 0) {
+    if (current === 0) return { cls: "flat", text: "→ 0%" };
+    return { cls: "up", text: "↑ new" };
+  }
+  const pct = ((current - previous) / previous) * 100;
+  if (Math.abs(pct) < 0.1) return { cls: "flat", text: "→ 0%" };
+  const rounded = Math.round(Math.abs(pct));
+  return pct >= 0 ? { cls: "up", text: `↑ ${rounded}%` } : { cls: "down", text: `↓ ${rounded}%` };
+}
+
+function setKpiMetaWithDelta(el, text, delta) {
+  el.classList.add("has-delta");
+  el.innerHTML = `<span class="kpi-meta-text">${text}</span><span class="kpi-delta ${delta.cls}">${delta.text}</span>`;
 }
 
 function groupBy(arr, keyFn, valueFn = (x) => x) {
@@ -729,18 +906,38 @@ function drawDonutChart(canvas, values, colors, labels, progress = 1) {
   const outer = radius + thickness / 2;
   const sum = values.reduce((a, b) => a + b, 0) || 1;
 
+  const darkMode = isDarkTheme();
+  const gradBase = "#111111";
   donutSegments = [];
   let start = -Math.PI / 2;
   values.forEach((v, i) => {
     const sweep = ((v / sum) * Math.PI * 2) * progress;
+    const end = start + sweep;
+    const epsilon = 0.0015;
+    const segStart = i === 0 ? start : start - epsilon;
+    const segEnd = i === values.length - 1 ? end : end + epsilon;
+    const gradRadius = (inner + outer) / 2;
+    const sx = cx + Math.cos(segStart) * gradRadius;
+    const sy = cy + Math.sin(segStart) * gradRadius;
+    const ex = cx + Math.cos(segEnd) * gradRadius;
+    const ey = cy + Math.sin(segEnd) * gradRadius;
+    let fillStyle = colors[i % colors.length];
+    if (darkMode) {
+      const segGrad = ctx.createLinearGradient(sx, sy, ex, ey);
+      segGrad.addColorStop(0, gradBase);
+      segGrad.addColorStop(1, colors[i % colors.length]);
+      fillStyle = segGrad;
+    }
+
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, start, start + sweep);
-    ctx.strokeStyle = colors[i % colors.length];
-    ctx.lineWidth = thickness;
-    ctx.stroke();
+    ctx.arc(cx, cy, outer, segStart, segEnd, false);
+    ctx.arc(cx, cy, inner, segEnd, segStart, true);
+    ctx.closePath();
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
     donutSegments.push({
       start,
-      end: start + sweep,
+      end,
       value: v,
       label: labels[i],
       cx,
@@ -748,8 +945,20 @@ function drawDonutChart(canvas, values, colors, labels, progress = 1) {
       inner,
       outer
     });
-    start += sweep;
+    start = end;
   });
+
+  // Ring-only outlines in light mode only.
+  if (!darkMode) {
+    ctx.strokeStyle = "rgba(0,0,0,0.5)";
+    ctx.lineWidth = 1.15;
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   labels.forEach((label, i) => {
     ctx.fillStyle = colors[i % colors.length];
@@ -762,6 +971,7 @@ function drawDonutChart(canvas, values, colors, labels, progress = 1) {
 
 function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [], progress = 1) {
   const theme = getThemeColors();
+  const darkMode = isDarkTheme();
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   itemBarRegions = [];
@@ -781,17 +991,30 @@ function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [],
     const barArea = w - left - right - valueGutter;
     const bw = ((barArea * values[i]) / max) * progress;
 
-    ctx.fillStyle = theme.chartBarBg;
-    ctx.fillRect(left, y, barArea, bh);
-
     const barColor = Array.isArray(color) ? color[i % color.length] : color;
     if (barColor && typeof barColor === "object" && barColor.type === "outline") {
       ctx.strokeStyle = barColor.stroke || "#ff6a2b";
       ctx.lineWidth = Math.max(1.5, bh * 0.35);
       ctx.strokeRect(left + 0.5, y + 0.5, Math.max(0, bw - 1), Math.max(0, bh - 1));
+    } else if (barColor && typeof barColor === "object" && barColor.type === "gradient") {
+      const g = ctx.createLinearGradient(left, y, left + Math.max(1, bw), y);
+      g.addColorStop(0, barColor.from || (darkMode ? "#111111" : "#ffffff"));
+      g.addColorStop(1, barColor.to || "#ff6a2b");
+      ctx.fillStyle = g;
+      ctx.fillRect(left, y, bw, bh);
+      if (!darkMode) {
+        ctx.strokeStyle = "#111111";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(left + 0.5, y + 0.5, Math.max(0, bw - 1), Math.max(0, bh - 1));
+      }
     } else {
       ctx.fillStyle = barColor;
       ctx.fillRect(left, y, bw, bh);
+      if (!darkMode && barColor !== "#111111" && barColor !== "#000000") {
+        ctx.strokeStyle = "#111111";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(left + 0.5, y + 0.5, Math.max(0, bw - 1), Math.max(0, bh - 1));
+      }
     }
 
     ctx.fillStyle = theme.itemLabel;
@@ -802,9 +1025,10 @@ function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [],
 
     ctx.textAlign = "left";
     const suffix = extraLabels[i] ? `  ${extraLabels[i]}` : "";
-    const tx = left + barArea + 6;
+    const valueText = `${values[i]}${suffix}`;
     ctx.fillStyle = theme.valueLabel;
-    ctx.fillText(`${values[i]}${suffix}`, tx, y + bh * 0.72);
+    const tx = Math.min(left + bw + 6, left + barArea + 6);
+    ctx.fillText(valueText, tx, y + bh * 0.72);
 
     if (canvas === itemCountCanvas) {
       itemBarRegions.push({
@@ -854,55 +1078,132 @@ function handleRestaurantHover(event) {
   chartTooltipEl.style.opacity = "1";
 }
 
-function drawHeatmap(canvas, matrix, dayLabels, slotLabels, progress = 1) {
+function drawHeatmap(canvas, hourlyByDay, activeDay, progress = 1) {
   const theme = getThemeColors();
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   heatmapRegions = [];
+  const darkMode = isDarkTheme();
+  const series = hourlyByDay[activeDay] || hourlyByDay.All || Array(24).fill(0);
+  const max = Math.max(1, ...series);
+  const cx = w * 0.5;
+  const cy = h * 0.54;
+  const innerR = Math.max(42, Math.min(w, h) * 0.2);
+  const outerR = Math.max(innerR + 56, Math.min(w, h) * 0.45);
+  const step = (Math.PI * 2) / 24;
+  const gap = step * 0.08;
+  const hoverHour = Number.isInteger(radialHoverHour) ? radialHoverHour : null;
 
-  const left = 54;
-  const top = 6;
-  const right = 12;
-  const bottom = 20;
-  const cols = slotLabels.length;
-  const rows = dayLabels.length;
-  const cellW = (w - left - right) / cols;
-  const cellH = (h - top - bottom) / rows;
-  const max = Math.max(1, ...matrix.flat());
+  [0.25, 0.5, 0.75, 1].forEach((t) => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, innerR + (outerR - innerR) * t, 0, Math.PI * 2);
+    ctx.strokeStyle = darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 5]);
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
 
-  for (let r = 0; r < rows; r += 1) {
-    ctx.fillStyle = theme.heatText;
-    ctx.font = "10px sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(dayLabels[r], left - 6, top + r * cellH + cellH * 0.62);
-    for (let c = 0; c < cols; c += 1) {
-      const val = matrix[r][c];
-      const intensity = (val / max) * progress;
-      const lightness = theme.heatBaseLightness + intensity * theme.heatRange;
-      const fill = `hsl(145 58% ${lightness}%)`;
-      ctx.fillStyle = fill;
-      const rx = left + c * cellW + 1;
-      const ry = top + r * cellH + 0.5;
-      const rw = cellW - 2;
-      const rh = cellH - 1;
-      ctx.fillRect(rx, ry, rw, rh);
-      heatmapRegions.push({
-        x: rx,
-        y: ry,
-        w: rw,
-        h: rh,
-        day: dayLabels[r],
-        slot: slotLabels[c],
-        count: val
-      });
-    }
+  for (let i = 0; i < 24; i += 1) {
+    const a = -Math.PI / 2 + i * step;
+    const minorIn = outerR + 8;
+    const minorOut = outerR + (i % 6 === 0 ? 18 : 13);
+    const x1 = cx + Math.cos(a) * minorIn;
+    const y1 = cy + Math.sin(a) * minorIn;
+    const x2 = cx + Math.cos(a) * minorOut;
+    const y2 = cy + Math.sin(a) * minorOut;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = darkMode
+      ? (i % 6 === 0 ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.14)")
+      : (i % 6 === 0 ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.12)");
+    ctx.lineWidth = i % 6 === 0 ? 2 : 1;
+    ctx.stroke();
   }
 
+  for (let i = 0; i < 24; i += 1) {
+    const val = series[i] || 0;
+    const t = (val / max) * progress;
+    const start = -Math.PI / 2 + i * step + gap / 2;
+    const end = start + step - gap;
+    const visualT = Math.max(0.08, t);
+    const segOuter = innerR + (outerR - innerR) * visualT + (hoverHour === i ? 6 : 0);
+    const dark = darkMode ? { r: 11, g: 26, b: 16 } : { r: 244, g: 251, b: 246 };
+    const light = darkMode ? { r: 94, g: 230, b: 142 } : { r: 50, g: 196, b: 109 };
+    const rC = Math.round(dark.r + (light.r - dark.r) * visualT);
+    const gC = Math.round(dark.g + (light.g - dark.g) * visualT);
+    const bC = Math.round(dark.b + (light.b - dark.b) * visualT);
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, segOuter, start, end, false);
+    ctx.arc(cx, cy, innerR, end, start, true);
+    ctx.closePath();
+    ctx.fillStyle = `rgb(${rC}, ${gC}, ${bC})`;
+    ctx.fill();
+
+    heatmapRegions.push({
+      cx,
+      cy,
+      inner: innerR,
+      outer: segOuter,
+      start,
+      end,
+      hour: i,
+      day: activeDay,
+      count: val
+    });
+  }
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerR - 1, 0, Math.PI * 2);
+  ctx.strokeStyle = darkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.2)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const tickLabels = [
+    { h: 0, label: "0" },
+    { h: 3, label: "3" },
+    { h: 6, label: "6" },
+    { h: 9, label: "9" },
+    { h: 12, label: "12" },
+    { h: 15, label: "15" },
+    { h: 18, label: "18" },
+    { h: 21, label: "21" }
+  ];
   ctx.fillStyle = theme.heatText;
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
-  for (let c = 0; c < cols; c += 1) {
-    ctx.fillText(slotLabels[c], left + c * cellW + cellW / 2, h - 6);
+  tickLabels.forEach((tick) => {
+    const a = -Math.PI / 2 + tick.h * step;
+    const tx = cx + Math.cos(a) * (outerR + 32);
+    const ty = cy + Math.sin(a) * (outerR + 32) + 3;
+    ctx.fillText(tick.label, tx, ty);
+  });
+
+  ctx.fillStyle = darkMode ? "#000000" : "#ffffff";
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerR - 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.09)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const hourText = hoverHour == null ? null : `${String(hoverHour).padStart(2, "0")}:00`;
+  const hourVal = hoverHour == null ? null : series[hoverHour];
+  ctx.fillStyle = theme.heatText;
+  ctx.textAlign = "center";
+  if (hourText) {
+    ctx.font = "700 18px sans-serif";
+    ctx.fillText(hourText, cx, cy - 2);
+    ctx.font = "600 12px sans-serif";
+    ctx.fillText(`${hourVal} orders`, cx, cy + 16);
+  } else {
+    ctx.font = "700 18px sans-serif";
+    ctx.fillText(activeDay === "All" ? "All Days" : activeDay, cx, cy - 2);
+    ctx.font = "500 11px sans-serif";
+    ctx.fillStyle = theme.monthLabel || theme.label || theme.heatText;
+    ctx.fillText("HOVER TO EXPLORE", cx, cy + 16);
   }
 }
 
@@ -910,12 +1211,30 @@ function handleHeatmapHover(event) {
   const rect = heatmapCanvas.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
-  const hit = heatmapRegions.find((cell) => x >= cell.x && x <= cell.x + cell.w && y >= cell.y && y <= cell.y + cell.h);
+  const hit = heatmapRegions.find((cell) => {
+    const dx = x - cell.cx;
+    const dy = y - cell.cy;
+    const r = Math.sqrt(dx * dx + dy * dy);
+    if (r < cell.inner || r > cell.outer) return false;
+    let angle = Math.atan2(dy, dx);
+    if (angle < -Math.PI / 2) angle += Math.PI * 2;
+    return angle >= cell.start && angle <= cell.end;
+  });
   if (!hit) {
+    if (radialHoverHour !== null && radialHourlyByDay) {
+      radialHoverHour = null;
+      drawHeatmap(heatmapCanvas, radialHourlyByDay, selectedRadialDay, 1);
+    }
     hideTooltip();
     return;
   }
-  chartTooltipEl.textContent = `${hit.day} ${hit.slot}: ${hit.count} orders`;
+  if (radialHoverHour !== hit.hour && radialHourlyByDay) {
+    radialHoverHour = hit.hour;
+    drawHeatmap(heatmapCanvas, radialHourlyByDay, selectedRadialDay, 1);
+  }
+  const hh = String(hit.hour).padStart(2, "0");
+  const hh2 = String((hit.hour + 1) % 24).padStart(2, "0");
+  chartTooltipEl.textContent = `${hit.day} ${hh}:00-${hh2}:00 • ${hit.count} orders`;
   chartTooltipEl.style.left = `${event.clientX + 12}px`;
   chartTooltipEl.style.top = `${event.clientY - 24}px`;
   chartTooltipEl.style.opacity = "1";
@@ -1012,12 +1331,35 @@ function render(orders) {
   ordersEl.textContent = String(totalOrders);
   avgEl.textContent = currency(avgValue);
   monthsEl.textContent = String(activeMonths);
-  totalMetaEl.textContent =
+  const monthKeysSorted = Array.from(byMonth.keys())
+    .filter((k) => k !== "Unknown")
+    .sort((a, b) => a.localeCompare(b));
+  const currentCompareMonth =
+    selectedYear === "all" ? currentMonth : monthKeysSorted[monthKeysSorted.length - 1] || currentMonth;
+  const previousCompareMonth = previousMonthKey(currentCompareMonth);
+
+  const currentSpendForDelta = byMonth.get(currentCompareMonth) || 0;
+  const previousSpendForDelta = (previousCompareMonth && byMonth.get(previousCompareMonth)) || 0;
+  const currentOrdersForDelta = monthlyCount.get(currentCompareMonth) || 0;
+  const previousOrdersForDelta = (previousCompareMonth && monthlyCount.get(previousCompareMonth)) || 0;
+  const currentAvgForDelta =
+    currentOrdersForDelta > 0 ? currentSpendForDelta / currentOrdersForDelta : 0;
+  const previousAvgForDelta =
+    previousOrdersForDelta > 0 ? previousSpendForDelta / previousOrdersForDelta : 0;
+
+  const spendDelta = getDeltaMeta(currentSpendForDelta, previousSpendForDelta);
+  const ordersDelta = getDeltaMeta(currentOrdersForDelta, previousOrdersForDelta);
+  const avgDelta = getDeltaMeta(currentAvgForDelta, previousAvgForDelta);
+
+  setKpiMetaWithDelta(
+    totalMetaEl,
     selectedYear === "all"
       ? `This month: ${currency(thisMonthSpend)}`
-      : `${selectedYear} spend: ${currency(totalSpend)}`;
-  ordersMetaEl.textContent = `Weekend ${weekendOrders} / Weekday ${weekdayOrders}`;
-  avgMetaEl.textContent = `Median: ${currency(medianOrderValue)}`;
+      : `${selectedYear} spend: ${currency(totalSpend)}`,
+    spendDelta
+  );
+  setKpiMetaWithDelta(ordersMetaEl, `Wknd ${weekendOrders} / Wkdy ${weekdayOrders}`, ordersDelta);
+  setKpiMetaWithDelta(avgMetaEl, `Median: ${currency(medianOrderValue)}`, avgDelta);
   monthsMetaEl.textContent = topSpendMonth
     ? `Highest: ${monthLabel(topSpendMonth[0])} (${currency(topSpendMonth[1])})`
     : "Highest month: NA";
@@ -1058,25 +1400,28 @@ function render(orders) {
   });
 
   const heatmapDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const heatmapSlots = ["00-06", "06-12", "12-18", "18-24"];
-  const heatMatrix = Array.from({ length: 7 }, () => [0, 0, 0, 0]);
+  const hourlyByDay = {
+    All: Array(24).fill(0),
+    Mon: Array(24).fill(0),
+    Tue: Array(24).fill(0),
+    Wed: Array(24).fill(0),
+    Thu: Array(24).fill(0),
+    Fri: Array(24).fill(0),
+    Sat: Array(24).fill(0),
+    Sun: Array(24).fill(0)
+  };
   for (const order of filteredOrders) {
     const dt = order.dateISO ? new Date(order.dateISO) : null;
     if (!dt || Number.isNaN(dt.getTime())) continue;
     const day = (dt.getDay() + 6) % 7;
     const hour = dt.getHours();
-    let slot = 0;
-    if (hour >= 6 && hour < 12) slot = 1;
-    else if (hour >= 12 && hour < 18) slot = 2;
-    else if (hour >= 18) slot = 3;
-    heatMatrix[day][slot] += 1;
+    const dayName = heatmapDays[day];
+    hourlyByDay.All[hour] += 1;
+    hourlyByDay[dayName][hour] += 1;
   }
-  let peak = { d: "NA", s: "NA", c: 0 };
-  heatMatrix.forEach((row, d) => {
-    row.forEach((count, s) => {
-      if (count > peak.c) peak = { d: heatmapDays[d], s: heatmapSlots[s], c: count };
-    });
-  });
+  if (!(selectedRadialDay in hourlyByDay)) selectedRadialDay = "All";
+  radialHourlyByDay = hourlyByDay;
+  if (radialDaySelectEl) radialDaySelectEl.value = selectedRadialDay;
 
   const itemsTop7 = itemEntries.slice(0, 7);
   const trendEntries = Array.from(monthlyCount.entries())
@@ -1102,12 +1447,14 @@ function render(orders) {
       spendLabels,
       progress
     );
-    drawHeatmap(heatmapCanvas, heatMatrix, heatmapDays, heatmapSlots, progress);
+    drawHeatmap(heatmapCanvas, hourlyByDay, selectedRadialDay, progress);
     drawHorizontalBarChart(
       itemCountCanvas,
       itemsTop7.map((e) => e[0]),
       itemsTop7.map((e) => e[1]),
-      isDarkTheme() ? ["#f8fafc", "#ff6a2b"] : ["#111111", "#ff6a2b"],
+      isDarkTheme()
+        ? ["#f8fafc", { type: "gradient", from: "#111111", to: "#ff6a2b" }]
+        : ["#111111", { type: "gradient", from: "#ffffff", to: "#ff6a2b" }],
       [],
       progress
     );
@@ -1163,7 +1510,6 @@ restaurantCanvas.addEventListener("mouseleave", hideTooltip);
 monthlyCanvas.addEventListener("mousemove", handleMonthlyBarHover);
 monthlyCanvas.addEventListener("mouseleave", hideTooltip);
 heatmapCanvas.addEventListener("mousemove", handleHeatmapHover);
-heatmapCanvas.addEventListener("mouseleave", hideTooltip);
 itemCountCanvas.addEventListener("mousemove", handleItemHover);
 itemCountCanvas.addEventListener("mouseleave", hideTooltip);
 trendCanvas.addEventListener("mousemove", handleTrendHover);
@@ -1176,8 +1522,22 @@ yearSelectEl.addEventListener("change", () => {
   selectedYear = yearSelectEl.value || "all";
   render(latestOrders);
 });
+if (radialDaySelectEl) {
+  radialDaySelectEl.addEventListener("change", () => {
+    selectedRadialDay = radialDaySelectEl.value || "All";
+    radialHoverHour = null;
+    render(latestOrders);
+  });
+}
+heatmapCanvas.addEventListener("mouseleave", () => {
+  radialHoverHour = null;
+  if (radialHourlyByDay) drawHeatmap(heatmapCanvas, radialHourlyByDay, selectedRadialDay, 1);
+  hideTooltip();
+});
 
 initTheme();
+initRadialDayOptions();
+initCardReorder();
 refreshFromStorage().catch(() => {
   subtitleEl.textContent = "Failed to load data from extension storage.";
 });

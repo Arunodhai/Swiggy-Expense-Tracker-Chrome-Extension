@@ -24,6 +24,11 @@
   --calendar-l4: #249c52;
   --tooltip-bg: #111111;
   --tooltip-text: #ffffff;
+  --heatmap-l0: #f4fbf6;
+  --heatmap-l1: #e4f6ea;
+  --heatmap-l2: #bfeccf;
+  --heatmap-l3: #7ddba0;
+  --heatmap-l4: #32c46d;
 }
 
 body[data-theme="dark"] {
@@ -49,6 +54,11 @@ body[data-theme="dark"] {
   --calendar-l4: #39d353;
   --tooltip-bg: #f8fafc;
   --tooltip-text: #0f172a;
+  --heatmap-l0: #0b1a10;
+  --heatmap-l1: #12361f;
+  --heatmap-l2: #1f6b3a;
+  --heatmap-l3: #2fae5c;
+  --heatmap-l4: #5ee68e;
 }
 
 * {
@@ -233,6 +243,10 @@ body[data-theme="dark"] .theme-icon.moon {
   box-shadow: var(--shadow);
 }
 
+.kpis article {
+  position: relative;
+}
+
 .kpis h2 {
   margin: 0;
   font-size: 21px;
@@ -258,6 +272,43 @@ body[data-theme="dark"] .theme-icon.moon {
   text-overflow: ellipsis;
 }
 
+.kpis small.has-delta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  overflow: visible;
+}
+
+.kpi-meta-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.kpi-delta {
+  display: inline-block;
+  margin-left: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.kpi-delta.up {
+  color: #16a34a;
+}
+
+.kpi-delta.down {
+  color: #dc2626;
+}
+
+.kpi-delta.flat {
+  color: var(--muted);
+}
+
 .grid {
   flex: 1;
   min-height: 0;
@@ -273,9 +324,85 @@ body[data-theme="dark"] .theme-icon.moon {
   letter-spacing: -0.01em;
 }
 
+.grid .panel {
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.grid .panel.dragging {
+  opacity: 0.72;
+  transform: scale(0.985);
+}
+
+.grid .panel.drag-over {
+  border-color: #ff6a2b;
+  box-shadow: 0 0 0 1px rgba(255, 106, 43, 0.32), var(--shadow);
+}
+
 .panel canvas {
   width: 100%;
   height: 205px;
+}
+
+.heatmap-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.heatmap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.heatmap-header h3 {
+  margin-bottom: 6px;
+}
+
+.radial-day-select {
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--control-bg);
+  color: var(--control-text);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 12px;
+  min-width: 130px;
+}
+
+.heatmap-legend {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--month-label);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.heatmap-legend-cells {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.heatmap-legend .hm {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  display: inline-block;
+  border: 1px solid var(--calendar-cell-border);
+}
+
+.heatmap-legend .hm-0 { background: var(--heatmap-l0); }
+.heatmap-legend .hm-1 { background: var(--heatmap-l1); }
+.heatmap-legend .hm-2 { background: var(--heatmap-l2); }
+.heatmap-legend .hm-3 { background: var(--heatmap-l3); }
+.heatmap-legend .hm-4 { background: var(--heatmap-l4); }
+
+.heatmap-panel canvas {
+  height: 300px;
 }
 
 .activity-panel {

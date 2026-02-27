@@ -70,24 +70,27 @@
         </article>
       </section>
 
-      <section class="grid">
-        <article class="panel">
+      <section class="grid" id="dashboardGrid">
+        <article class="panel" data-card-key="monthly-spend">
           <h3>Monthly Spend</h3>
           <canvas id="monthlyChart" width="640" height="280"></canvas>
         </article>
-        <article class="panel">
+        <article class="panel" data-card-key="spend-by-restaurant">
           <h3>Spend by Restaurant</h3>
           <canvas id="restaurantChart" width="640" height="280"></canvas>
         </article>
-        <article class="panel">
-          <h3>Busiest Ordering Days/Times</h3>
+        <article class="panel heatmap-panel" data-card-key="busiest-days-times">
+          <div class="heatmap-header">
+            <h3>Busiest Ordering Days/Times</h3>
+            <select id="radialDaySelect" class="radial-day-select" aria-label="Filter radial chart by day"></select>
+          </div>
           <canvas id="heatmapChart" width="640" height="280"></canvas>
         </article>
-        <article class="panel">
+        <article class="panel" data-card-key="food-item-count">
           <h3>Food Item Count</h3>
           <canvas id="itemCountChart" width="640" height="280"></canvas>
         </article>
-        <article class="panel activity-panel">
+        <article class="panel activity-panel" data-card-key="activity-streak">
           <h3>Order Activity & Streak</h3>
           <div class="calendar-shell">
             <div class="month-labels" id="monthLabels"></div>
@@ -113,7 +116,7 @@
             </div>
           </div>
         </article>
-        <article class="panel">
+        <article class="panel" data-card-key="order-trend">
           <h3>Order Trend</h3>
           <canvas id="trendChart" width="640" height="280"></canvas>
         </article>
