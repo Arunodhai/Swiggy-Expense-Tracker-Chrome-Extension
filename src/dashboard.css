@@ -7,6 +7,48 @@
   --accent: #ff6a2b;
   --blue: #1d6eff;
   --radius: 18px;
+  --phone: #000000;
+  --phone-icon: #111111;
+  --control-bg: #ffffff;
+  --control-text: #111111;
+  --shadow: 0 10px 28px rgba(16, 24, 40, 0.05);
+  --meta: #8a93a2;
+  --month-label: #9ca3af;
+  --insight: #475569;
+  --calendar-cell-bg: #ffffff;
+  --calendar-cell-border: #111111;
+  --calendar-l0: #efefeb;
+  --calendar-l1: #d7f5de;
+  --calendar-l2: #9fe5b0;
+  --calendar-l3: #59cc7d;
+  --calendar-l4: #249c52;
+  --tooltip-bg: #111111;
+  --tooltip-text: #ffffff;
+}
+
+body[data-theme="dark"] {
+  --bg: #000000;
+  --panel: #000000;
+  --text: #f2f5f8;
+  --muted: #9ca3af;
+  --line: #1f2937;
+  --phone: #f2f5f8;
+  --phone-icon: #f2f5f8;
+  --control-bg: #000000;
+  --control-text: #f2f5f8;
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+  --meta: #99a4b5;
+  --month-label: #8b95a7;
+  --insight: #a7b2c3;
+  --calendar-cell-bg: #000000;
+  --calendar-cell-border: #30363d;
+  --calendar-l0: transparent;
+  --calendar-l1: #0e4429;
+  --calendar-l2: #006d32;
+  --calendar-l3: #26a641;
+  --calendar-l4: #39d353;
+  --tooltip-bg: #f8fafc;
+  --tooltip-text: #0f172a;
 }
 
 * {
@@ -20,6 +62,7 @@ body {
   color: var(--text);
   font-family: "Avenir Next", "DM Sans", "Segoe UI", sans-serif;
   overflow: hidden;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 main {
@@ -57,7 +100,7 @@ header {
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: #000000;
+  color: var(--phone);
   line-height: 1;
   white-space: nowrap;
 }
@@ -66,7 +109,7 @@ header {
   width: 14px;
   height: 14px;
   fill: none;
-  stroke: #111111;
+  stroke: var(--phone-icon);
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -94,17 +137,72 @@ h1 {
 }
 
 #refreshBtn,
-#globalYearSelect {
+#globalYearSelect,
+#themeToggleBtn {
   border: 1px solid var(--line);
-  background: #fff;
-  color: #111;
+  background: var(--control-bg);
+  color: var(--control-text);
   font-size: 12px;
 }
 
-#globalYearSelect {
+#globalYearSelect,
+#themeToggleBtn {
   border-radius: 10px;
   padding: 8px 10px;
   font-weight: 600;
+}
+
+#themeToggleBtn {
+  min-width: 35px;
+  width: 35px;
+  height: 35px;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--control-text);
+  outline: none;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+#themeToggleBtn:hover {
+  border-color: #cfd4dc;
+  transform: translateY(-1px);
+}
+
+body[data-theme="dark"] #themeToggleBtn:hover {
+  border-color: #4b5563;
+}
+
+.theme-icon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  position: absolute;
+  opacity: 0;
+  transform: scale(0.82) rotate(-8deg);
+  transition: opacity 0.22s ease, transform 0.22s ease, color 0.22s ease;
+}
+
+body:not([data-theme="dark"]) .theme-icon.sun {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  color: #0f172a;
+}
+
+body[data-theme="dark"] .theme-icon.moon {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  color: #e2e8f0;
 }
 
 #refreshBtn {
@@ -117,7 +215,7 @@ h1 {
 
 #refreshBtn:hover {
   border-color: #d5dae2;
-  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.08);
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.12);
 }
 
 .kpis {
@@ -132,7 +230,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px;
-  box-shadow: 0 10px 28px rgba(16, 24, 40, 0.05);
+  box-shadow: var(--shadow);
 }
 
 .kpis h2 {
@@ -153,7 +251,7 @@ h1 {
 .kpis small {
   display: block;
   margin-top: 6px;
-  color: #8a93a2;
+  color: var(--meta);
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
@@ -188,7 +286,7 @@ h1 {
 .calendar-shell {
   overflow-x: auto;
   padding-bottom: 2px;
-  scrollbar-color: #111111 #ffffff;
+  scrollbar-color: var(--text) var(--control-bg);
 }
 
 .calendar-shell::-webkit-scrollbar {
@@ -196,12 +294,12 @@ h1 {
 }
 
 .calendar-shell::-webkit-scrollbar-track {
-  background: #ffffff;
+  background: var(--control-bg);
   border-radius: 999px;
 }
 
 .calendar-shell::-webkit-scrollbar-thumb {
-  background: #111111;
+  background: var(--text);
   border-radius: 999px;
 }
 
@@ -216,7 +314,7 @@ h1 {
   position: absolute;
   top: 0;
   font-size: 9px;
-  color: #9ca3af;
+  color: var(--month-label);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -237,18 +335,19 @@ h1 {
   width: 13px;
   height: 13px;
   border-radius: 3px;
-  background: #ffffff;
-  border: 1px solid #111111;
+  background: var(--calendar-cell-bg);
+  border: 1px solid var(--calendar-cell-border);
 }
 
 .day-cell.cell-enter {
   animation: cellPopIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.lvl-1 { background: #d7f5de; }
-.lvl-2 { background: #9fe5b0; }
-.lvl-3 { background: #59cc7d; }
-.lvl-4 { background: #249c52; }
+.lvl-0 { background: var(--calendar-l0); }
+.lvl-1 { background: var(--calendar-l1); }
+.lvl-2 { background: var(--calendar-l2); }
+.lvl-3 { background: var(--calendar-l3); }
+.lvl-4 { background: var(--calendar-l4); }
 
 @keyframes cellPopIn {
   0% {
@@ -264,7 +363,7 @@ h1 {
 .calendar-insight {
   margin-top: 8px;
   font-size: 11px;
-  color: #475569;
+  color: var(--insight);
 }
 
 .calendar-footer {
@@ -280,7 +379,7 @@ h1 {
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: #9ca3af;
+  color: var(--month-label);
   text-transform: uppercase;
   font-weight: 700;
 }
@@ -295,14 +394,14 @@ h1 {
   height: 13px;
   border-radius: 3px;
   display: inline-block;
-  border: 1px solid #111111;
+  border: 1px solid var(--calendar-cell-border);
 }
 
-.l0 { background: #efefeb; }
-.l1 { background: #d7f5de; }
-.l2 { background: #9fe5b0; }
-.l3 { background: #59cc7d; }
-.l4 { background: #249c52; }
+.l0 { background: var(--calendar-l0); }
+.l1 { background: var(--calendar-l1); }
+.l2 { background: var(--calendar-l2); }
+.l3 { background: var(--calendar-l3); }
+.l4 { background: var(--calendar-l4); }
 
 .stats-row {
   display: flex;
@@ -315,14 +414,14 @@ h1 {
 
 .stat strong {
   font-size: 16px;
-  color: #111;
+  color: var(--text);
   line-height: 1;
 }
 
 .stat small {
   display: block;
   font-size: 9px;
-  color: #9ca3af;
+  color: var(--month-label);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-top: 2px;
@@ -331,8 +430,8 @@ h1 {
 #chartTooltip {
   position: fixed;
   z-index: 20;
-  background: #111111;
-  color: #ffffff;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
   border-radius: 8px;
   padding: 6px 8px;
   font-size: 11px;

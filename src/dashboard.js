@@ -20,6 +20,7 @@ const longestStreakEl = document.getElementById("longestStreak");
 const currentStreakEl = document.getElementById("currentStreak");
 const refreshBtn = document.getElementById("refreshBtn");
 const yearSelectEl = document.getElementById("globalYearSelect");
+const themeToggleBtn = document.getElementById("themeToggleBtn");
 
 const monthlyCanvas = document.getElementById("monthlyChart");
 const restaurantCanvas = document.getElementById("restaurantChart");
@@ -39,6 +40,59 @@ let trendPointRegions = [];
 let latestOrders = [];
 let selectedYear = "all";
 let chartAnimationFrame = 0;
+const THEME_STORAGE_KEY = "swiggy_dashboard_theme_v1";
+
+function isDarkTheme() {
+  return document.body.dataset.theme === "dark";
+}
+
+function getThemeColors() {
+  return isDarkTheme()
+    ? {
+        axis: "rgba(255,255,255,0.18)",
+        label: "#cbd5e1",
+        chartBarBg: "#1d2430",
+        line: "#f2f5f8",
+        donutLabel: "#dbe3ee",
+        itemLabel: "#d2dae6",
+        valueLabel: "#d2dae6",
+        monthlyBar: "#f2f5f8",
+        trendLine: "#f2f5f8",
+        itemBar: "#ff6a2b",
+        heatText: "#f2f5f8",
+        heatBaseLightness: 18,
+        heatRange: 44
+      }
+    : {
+        axis: "rgba(0,0,0,0.08)",
+        label: "#4b5563",
+        chartBarBg: "#f3f4f6",
+        line: "#111111",
+        donutLabel: "#334155",
+        itemLabel: "#374151",
+        valueLabel: "#374151",
+        monthlyBar: "#111111",
+        trendLine: "#111111",
+        itemBar: "#ff6a2b",
+        heatText: "#000000",
+        heatBaseLightness: 96,
+        heatRange: -44
+      };
+}
+
+function applyTheme(theme) {
+  const next = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = next;
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  const isDark = next === "dark";
+  themeToggleBtn.setAttribute("aria-pressed", String(isDark));
+  themeToggleBtn.setAttribute("aria-label", isDark ? "Disable dark mode" : "Enable dark mode");
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  applyTheme(saved || "light");
+}
 
 function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3);
@@ -377,6 +431,7 @@ function clearCanvas(ctx, canvas) {
 }
 
 function drawBarChart(canvas, labels, values, color, progress = 1) {
+  const theme = getThemeColors();
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   monthlyBarRegions = [];
@@ -388,7 +443,7 @@ function drawBarChart(canvas, labels, values, color, progress = 1) {
   const chartBottom = chartTop + chartHeight;
   const band = (w - left - right) / Math.max(labels.length, 1);
 
-  ctx.strokeStyle = "rgba(0,0,0,0.08)";
+  ctx.strokeStyle = theme.axis;
   ctx.beginPath();
   ctx.moveTo(left, chartBottom);
   ctx.lineTo(w - right, chartBottom);
@@ -403,7 +458,7 @@ function drawBarChart(canvas, labels, values, color, progress = 1) {
     ctx.fillStyle = color;
     ctx.fillRect(x, y, bw, vh);
 
-    ctx.fillStyle = "#4b5563";
+    ctx.fillStyle = theme.label;
     ctx.font = "11px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(label, x + bw / 2, chartBottom + 14);
@@ -422,6 +477,7 @@ function drawBarChart(canvas, labels, values, color, progress = 1) {
 }
 
 function drawLineChart(canvas, labels, values, color, progress = 1) {
+  const theme = getThemeColors();
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   if (canvas === trendCanvas) trendPointRegions = [];
@@ -432,7 +488,7 @@ function drawLineChart(canvas, labels, values, color, progress = 1) {
   const chartBottom = chartTop + chartHeight;
   const max = Math.max(...values, 1);
 
-  ctx.strokeStyle = "rgba(0,0,0,0.08)";
+  ctx.strokeStyle = theme.axis;
   ctx.beginPath();
   ctx.moveTo(left, chartBottom);
   ctx.lineTo(w - right, chartBottom);
@@ -456,7 +512,7 @@ function drawLineChart(canvas, labels, values, color, progress = 1) {
   labels.forEach((label, i) => {
     if (i % Math.ceil(labels.length / 6) !== 0 && i !== labels.length - 1) return;
     const x = left + (i * (w - left - right)) / Math.max(labels.length - 1, 1);
-    ctx.fillStyle = "#4b5563";
+    ctx.fillStyle = theme.label;
     ctx.font = "11px sans-serif";
     if (i === 0) {
       ctx.textAlign = "left";
@@ -500,6 +556,7 @@ function handleTrendHover(event) {
 }
 
 function drawDonutChart(canvas, values, colors, labels, progress = 1) {
+  const theme = getThemeColors();
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   const cx = w * 0.3;
@@ -535,7 +592,7 @@ function drawDonutChart(canvas, values, colors, labels, progress = 1) {
   labels.forEach((label, i) => {
     ctx.fillStyle = colors[i % colors.length];
     ctx.fillRect(w * 0.58, 20 + i * 18, 8, 8);
-    ctx.fillStyle = "#334155";
+    ctx.fillStyle = theme.donutLabel;
     ctx.font = "11px sans-serif";
     const short = label.length > 16 ? `${label.slice(0, 16)}...` : label;
     ctx.fillText(short, w * 0.58 + 13, 27 + i * 18);
@@ -543,6 +600,7 @@ function drawDonutChart(canvas, values, colors, labels, progress = 1) {
 }
 
 function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [], progress = 1) {
+  const theme = getThemeColors();
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   itemBarRegions = [];
@@ -562,13 +620,13 @@ function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [],
     const barArea = w - left - right - valueGutter;
     const bw = ((barArea * values[i]) / max) * progress;
 
-    ctx.fillStyle = "#f3f4f6";
+    ctx.fillStyle = theme.chartBarBg;
     ctx.fillRect(left, y, barArea, bh);
 
     ctx.fillStyle = color;
     ctx.fillRect(left, y, bw, bh);
 
-    ctx.fillStyle = "#374151";
+    ctx.fillStyle = theme.itemLabel;
     ctx.font = "12px sans-serif";
     ctx.textAlign = "right";
     const short = label.length > 16 ? `${label.slice(0, 16)}...` : label;
@@ -577,6 +635,7 @@ function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [],
     ctx.textAlign = "left";
     const suffix = extraLabels[i] ? `  ${extraLabels[i]}` : "";
     const tx = left + barArea + 6;
+    ctx.fillStyle = theme.valueLabel;
     ctx.fillText(`${values[i]}${suffix}`, tx, y + bh * 0.72);
 
     if (canvas === itemCountCanvas) {
@@ -628,6 +687,7 @@ function handleRestaurantHover(event) {
 }
 
 function drawHeatmap(canvas, matrix, dayLabels, slotLabels, progress = 1) {
+  const theme = getThemeColors();
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   heatmapRegions = [];
@@ -643,14 +703,14 @@ function drawHeatmap(canvas, matrix, dayLabels, slotLabels, progress = 1) {
   const max = Math.max(1, ...matrix.flat());
 
   for (let r = 0; r < rows; r += 1) {
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = theme.heatText;
     ctx.font = "10px sans-serif";
     ctx.textAlign = "right";
     ctx.fillText(dayLabels[r], left - 6, top + r * cellH + cellH * 0.62);
     for (let c = 0; c < cols; c += 1) {
       const val = matrix[r][c];
       const intensity = (val / max) * progress;
-      const lightness = 96 - intensity * 44;
+      const lightness = theme.heatBaseLightness + intensity * theme.heatRange;
       const fill = `hsl(145 58% ${lightness}%)`;
       ctx.fillStyle = fill;
       const rx = left + c * cellW + 1;
@@ -670,7 +730,7 @@ function drawHeatmap(canvas, matrix, dayLabels, slotLabels, progress = 1) {
     }
   }
 
-  ctx.fillStyle = "#000000";
+  ctx.fillStyle = theme.heatText;
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
   for (let c = 0; c < cols; c += 1) {
@@ -728,6 +788,7 @@ function handleMonthlyBarHover(event) {
 }
 
 function render(orders) {
+  const theme = getThemeColors();
   latestOrders = orders;
   const filteredOrders =
     selectedYear === "all"
@@ -802,6 +863,9 @@ function render(orders) {
   subtitleEl.textContent = "";
 
   const spendTop6 = restSpendEntries.slice(0, 6);
+  const donutColors = isDarkTheme()
+    ? ["#f8fafc", "#ff6a2b", "#60a5fa", "#34d399", "#fbbf24", "#f87171"]
+    : ["#111111", "#ff6a2b", "#1d6eff", "#10b981", "#f59e0b", "#ef4444"];
 
   const heatmapDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const heatmapSlots = ["00-06", "06-12", "12-18", "18-24"];
@@ -835,11 +899,11 @@ function render(orders) {
   renderActivityCalendar(filteredOrders, true);
 
   animateCharts((progress) => {
-    drawBarChart(monthlyCanvas, monthLabels, monthValues, "#111111", progress);
+    drawBarChart(monthlyCanvas, monthLabels, monthValues, theme.monthlyBar, progress);
     drawDonutChart(
       restaurantCanvas,
       spendTop6.map((e) => e[1]),
-      ["#111111", "#ff6a2b", "#1d6eff", "#10b981", "#f59e0b", "#ef4444"],
+      donutColors,
       spendTop6.map((e) => cleanRestaurantLabel(e[0])),
       progress
     );
@@ -848,11 +912,11 @@ function render(orders) {
       itemCountCanvas,
       itemsTop7.map((e) => e[0]),
       itemsTop7.map((e) => e[1]),
-      "#ff6a2b",
+      theme.itemBar,
       [],
       progress
     );
-    drawLineChart(trendCanvas, trendLabels, trendValues, "#111111", progress);
+    drawLineChart(trendCanvas, trendLabels, trendValues, theme.trendLine, progress);
   });
 }
 
@@ -907,11 +971,16 @@ itemCountCanvas.addEventListener("mousemove", handleItemHover);
 itemCountCanvas.addEventListener("mouseleave", hideTooltip);
 trendCanvas.addEventListener("mousemove", handleTrendHover);
 trendCanvas.addEventListener("mouseleave", hideTooltip);
+themeToggleBtn.addEventListener("click", () => {
+  applyTheme(isDarkTheme() ? "light" : "dark");
+  render(latestOrders);
+});
 yearSelectEl.addEventListener("change", () => {
   selectedYear = yearSelectEl.value || "all";
   render(latestOrders);
 });
 
+initTheme();
 refreshFromStorage().catch(() => {
   subtitleEl.textContent = "Failed to load data from extension storage.";
 });
