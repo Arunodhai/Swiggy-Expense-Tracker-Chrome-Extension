@@ -38,6 +38,32 @@ let itemBarRegions = [];
 let trendPointRegions = [];
 let latestOrders = [];
 let selectedYear = "all";
+let chartAnimationFrame = 0;
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function animateCharts(drawFrame, duration = 720) {
+  if (chartAnimationFrame) {
+    cancelAnimationFrame(chartAnimationFrame);
+    chartAnimationFrame = 0;
+  }
+
+  const start = performance.now();
+  const tick = (now) => {
+    const elapsed = now - start;
+    const raw = Math.min(1, elapsed / duration);
+    drawFrame(easeOutCubic(raw));
+    if (raw < 1) {
+      chartAnimationFrame = requestAnimationFrame(tick);
+    } else {
+      chartAnimationFrame = 0;
+    }
+  };
+
+  chartAnimationFrame = requestAnimationFrame(tick);
+}
 
 function currency(n) {
   return new Intl.NumberFormat("en-IN", {
@@ -212,7 +238,7 @@ function showTooltip(text, clientX, clientY) {
   chartTooltipEl.style.opacity = "1";
 }
 
-function renderActivityCalendar(orders) {
+function renderActivityCalendar(orders, animate = false) {
   monthLabelsEl.innerHTML = "";
   orderCalendarGridEl.innerHTML = "";
 
@@ -273,16 +299,20 @@ function renderActivityCalendar(orders) {
     monthLabelsEl.appendChild(label);
   });
 
-  weeks.forEach((week) => {
+  weeks.forEach((week, weekIdx) => {
     const col = document.createElement("div");
     col.className = "week-col";
-    week.forEach((date) => {
+    week.forEach((date, dayIdx) => {
       const key = ymd(date);
       const count = dayCounts.get(key) || 0;
       const isFuture = date > today;
       const level = count >= 4 ? 4 : count >= 3 ? 3 : count >= 2 ? 2 : count >= 1 ? 1 : 0;
       const cell = document.createElement("div");
       cell.className = `day-cell ${isFuture ? "lvl-0" : `lvl-${level}`}`;
+      if (animate) {
+        cell.classList.add("cell-enter");
+        cell.style.animationDelay = `${Math.min(420, weekIdx * 7 + dayIdx * 16)}ms`;
+      }
       cell.addEventListener("mouseenter", (e) => {
         showTooltip(
           `${count} order${count === 1 ? "" : "s"} - ${date.toLocaleDateString("en-IN", {
@@ -346,7 +376,7 @@ function clearCanvas(ctx, canvas) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
-function drawBarChart(canvas, labels, values, color) {
+function drawBarChart(canvas, labels, values, color, progress = 1) {
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   monthlyBarRegions = [];
@@ -367,7 +397,7 @@ function drawBarChart(canvas, labels, values, color) {
   labels.forEach((label, i) => {
     const x = left + i * band + band * 0.15;
     const bw = band * 0.7;
-    const vh = (chartHeight * values[i]) / max;
+    const vh = ((chartHeight * values[i]) / max) * progress;
     const y = chartBottom - vh;
 
     ctx.fillStyle = color;
@@ -391,7 +421,7 @@ function drawBarChart(canvas, labels, values, color) {
   });
 }
 
-function drawLineChart(canvas, labels, values, color) {
+function drawLineChart(canvas, labels, values, color, progress = 1) {
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   if (canvas === trendCanvas) trendPointRegions = [];
@@ -413,7 +443,7 @@ function drawLineChart(canvas, labels, values, color) {
   ctx.beginPath();
   labels.forEach((label, i) => {
     const x = left + (i * (w - left - right)) / Math.max(labels.length - 1, 1);
-    const y = chartBottom - (chartHeight * values[i]) / max;
+    const y = chartBottom - ((chartHeight * values[i]) / max) * progress;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
 
@@ -469,7 +499,7 @@ function handleTrendHover(event) {
   chartTooltipEl.style.opacity = "1";
 }
 
-function drawDonutChart(canvas, values, colors, labels) {
+function drawDonutChart(canvas, values, colors, labels, progress = 1) {
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   const cx = w * 0.3;
@@ -483,7 +513,7 @@ function drawDonutChart(canvas, values, colors, labels) {
   donutSegments = [];
   let start = -Math.PI / 2;
   values.forEach((v, i) => {
-    const sweep = (v / sum) * Math.PI * 2;
+    const sweep = ((v / sum) * Math.PI * 2) * progress;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, start, start + sweep);
     ctx.strokeStyle = colors[i % colors.length];
@@ -512,7 +542,7 @@ function drawDonutChart(canvas, values, colors, labels) {
   });
 }
 
-function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = []) {
+function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [], progress = 1) {
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   itemBarRegions = [];
@@ -530,7 +560,7 @@ function drawHorizontalBarChart(canvas, labels, values, color, extraLabels = [])
     const y = top + i * rowH + rowH * 0.2;
     const bh = rowH * 0.6;
     const barArea = w - left - right - valueGutter;
-    const bw = (barArea * values[i]) / max;
+    const bw = ((barArea * values[i]) / max) * progress;
 
     ctx.fillStyle = "#f3f4f6";
     ctx.fillRect(left, y, barArea, bh);
@@ -597,7 +627,7 @@ function handleRestaurantHover(event) {
   chartTooltipEl.style.opacity = "1";
 }
 
-function drawHeatmap(canvas, matrix, dayLabels, slotLabels) {
+function drawHeatmap(canvas, matrix, dayLabels, slotLabels, progress = 1) {
   const { ctx, w, h } = setupCanvas(canvas);
   clearCanvas(ctx, canvas);
   heatmapRegions = [];
@@ -619,7 +649,7 @@ function drawHeatmap(canvas, matrix, dayLabels, slotLabels) {
     ctx.fillText(dayLabels[r], left - 6, top + r * cellH + cellH * 0.62);
     for (let c = 0; c < cols; c += 1) {
       const val = matrix[r][c];
-      const intensity = val / max;
+      const intensity = (val / max) * progress;
       const lightness = 96 - intensity * 44;
       const fill = `hsl(145 58% ${lightness}%)`;
       ctx.fillStyle = fill;
@@ -771,15 +801,7 @@ function render(orders) {
 
   subtitleEl.textContent = "";
 
-  drawBarChart(monthlyCanvas, monthLabels, monthValues, "#111111");
-
   const spendTop6 = restSpendEntries.slice(0, 6);
-  drawDonutChart(
-    restaurantCanvas,
-    spendTop6.map((e) => e[1]),
-    ["#111111", "#ff6a2b", "#1d6eff", "#10b981", "#f59e0b", "#ef4444"],
-    spendTop6.map((e) => cleanRestaurantLabel(e[0]))
-  );
 
   const heatmapDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const heatmapSlots = ["00-06", "06-12", "12-18", "18-24"];
@@ -795,7 +817,6 @@ function render(orders) {
     else if (hour >= 18) slot = 3;
     heatMatrix[day][slot] += 1;
   }
-  drawHeatmap(heatmapCanvas, heatMatrix, heatmapDays, heatmapSlots);
   let peak = { d: "NA", s: "NA", c: 0 };
   heatMatrix.forEach((row, d) => {
     row.forEach((count, s) => {
@@ -804,25 +825,35 @@ function render(orders) {
   });
 
   const itemsTop7 = itemEntries.slice(0, 7);
-  drawHorizontalBarChart(
-    itemCountCanvas,
-    itemsTop7.map((e) => e[0]),
-    itemsTop7.map((e) => e[1]),
-    "#ff6a2b"
-  );
-
   const trendEntries = Array.from(monthlyCount.entries())
     .filter(([k]) => k !== "Unknown")
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-12);
-  drawLineChart(
-    trendCanvas,
-    trendEntries.map(([k]) => monthLabel(k)),
-    trendEntries.map(([, v]) => v),
-    "#111111"
-  );
+  const trendLabels = trendEntries.map(([k]) => monthLabel(k));
+  const trendValues = trendEntries.map(([, v]) => v);
 
-  renderActivityCalendar(filteredOrders);
+  renderActivityCalendar(filteredOrders, true);
+
+  animateCharts((progress) => {
+    drawBarChart(monthlyCanvas, monthLabels, monthValues, "#111111", progress);
+    drawDonutChart(
+      restaurantCanvas,
+      spendTop6.map((e) => e[1]),
+      ["#111111", "#ff6a2b", "#1d6eff", "#10b981", "#f59e0b", "#ef4444"],
+      spendTop6.map((e) => cleanRestaurantLabel(e[0])),
+      progress
+    );
+    drawHeatmap(heatmapCanvas, heatMatrix, heatmapDays, heatmapSlots, progress);
+    drawHorizontalBarChart(
+      itemCountCanvas,
+      itemsTop7.map((e) => e[0]),
+      itemsTop7.map((e) => e[1]),
+      "#ff6a2b",
+      [],
+      progress
+    );
+    drawLineChart(trendCanvas, trendLabels, trendValues, "#111111", progress);
+  });
 }
 
 function updateYearOptions(orders) {

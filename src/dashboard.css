@@ -241,10 +241,25 @@ h1 {
   border: 1px solid #111111;
 }
 
+.day-cell.cell-enter {
+  animation: cellPopIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .lvl-1 { background: #d7f5de; }
 .lvl-2 { background: #9fe5b0; }
 .lvl-3 { background: #59cc7d; }
 .lvl-4 { background: #249c52; }
+
+@keyframes cellPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 
 .calendar-insight {
   margin-top: 8px;
